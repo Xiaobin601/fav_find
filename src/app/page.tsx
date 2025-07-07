@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition, useRef } from "react";
+import React, { useState, useTransition, useRef, useEffect } from "react";
 import {
   Bookmark,
   Search,
@@ -29,9 +29,43 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [bookmarks, setBookmarks] = useState<BookmarkType[]>(dummyBookmarks);
   const [userBookmarksLoaded, setUserBookmarksLoaded] = useState(false);
+  const [isExtension, setIsExtension] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (window.chrome && window.chrome.bookmarks) {
+      setIsExtension(true);
+      
+      const flattenBookmarks = (nodes: chrome.bookmarks.BookmarkTreeNode[]): BookmarkType[] => {
+        let bookmarkList: BookmarkType[] = [];
+        for (const node of nodes) {
+          if (node.url) {
+            bookmarkList.push({
+              title: node.title,
+              url: node.url,
+              description: node.title,
+            });
+          }
+          if (node.children) {
+            bookmarkList = bookmarkList.concat(flattenBookmarks(node.children));
+          }
+        }
+        return bookmarkList;
+      };
+
+      chrome.bookmarks.getTree((bookmarkTreeNodes) => {
+        const allBookmarks = flattenBookmarks(bookmarkTreeNodes);
+        setBookmarks(allBookmarks);
+        setUserBookmarksLoaded(true);
+        toast({
+          title: "Bookmarks Loaded",
+          description: `Successfully loaded ${allBookmarks.length} bookmarks from Chrome.`,
+        });
+      });
+    }
+  }, []);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -202,7 +236,11 @@ export default function Home() {
         <div className="text-center py-10">
           <Sparkles className="mx-auto h-12 w-12 text-primary/30" />
           <p className="mt-4 text-sm text-muted-foreground">
-            {userBookmarksLoaded ? `Loaded ${bookmarks.length} bookmarks.` : "Upload your Chrome bookmarks or use the sample data."}
+            {isExtension
+                ? `Loaded ${bookmarks.length} bookmarks from your browser.`
+                : userBookmarksLoaded
+                ? `Loaded ${bookmarks.length} bookmarks.`
+                : 'Upload your Chrome bookmarks or use the sample data.'}
           </p>
            <p className="mt-1 text-xs text-muted-foreground">
             Search your bookmarks with the power of AI.
@@ -227,37 +265,39 @@ export default function Home() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 mb-6">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
-                      accept=".html"
-                      className="hidden"
-                    />
-                    <Button 
-                        onClick={onUploadClick} 
-                        disabled={isIndexing || isSearching}
-                        variant="outline"
-                        className="flex-1"
-                    >
-                        <Upload className="mr-2 h-4 w-4" />
-                        {userBookmarksLoaded ? "Load Other Bookmarks" : "Load Chrome Bookmarks"}
-                    </Button>
-                    <Button 
-                        onClick={onIndexClick} 
-                        disabled={isIndexing || isSearching}
-                        variant="outline"
-                        className="flex-1"
-                    >
-                    {isIndexing ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                        <Cpu className="mr-2 h-4 w-4" />
-                    )}
-                    Index {userBookmarksLoaded ? `(${bookmarks.length})` : ''} Bookmarks
-                    </Button>
-                </div>
+                {!isExtension && (
+                    <div className="flex items-center gap-2 mb-6">
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          onChange={handleFileChange}
+                          accept=".html"
+                          className="hidden"
+                        />
+                        <Button 
+                            onClick={onUploadClick} 
+                            disabled={isIndexing || isSearching}
+                            variant="outline"
+                            className="flex-1"
+                        >
+                            <Upload className="mr-2 h-4 w-4" />
+                            {userBookmarksLoaded ? "Load Other Bookmarks" : "Load Chrome Bookmarks"}
+                        </Button>
+                        <Button 
+                            onClick={onIndexClick} 
+                            disabled={isIndexing || isSearching}
+                            variant="outline"
+                            className="flex-1"
+                        >
+                        {isIndexing ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <Cpu className="mr-2 h-4 w-4" />
+                        )}
+                        Index {userBookmarksLoaded ? `(${bookmarks.length})` : ''} Bookmarks
+                        </Button>
+                    </div>
+                )}
 
 
                 <form onSubmit={onSearchSubmit} className="mb-6">

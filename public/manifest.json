@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "FavFind AI",
+  "version": "1.0",
+  "description": "AI-powered search for your Chrome bookmarks.",
+  "permissions": ["bookmarks"],
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "FavFind AI"
+  }
+}
