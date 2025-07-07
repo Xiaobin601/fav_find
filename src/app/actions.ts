@@ -2,9 +2,9 @@
 
 import { aiPoweredBookmarkSearch } from "@/ai/flows/ai-powered-bookmark-search";
 import { indexBookmarks } from "@/ai/flows/bookmark-semantic-indexing";
-import { dummyBookmarks } from "@/lib/bookmarks";
+import type { Bookmark } from "@/lib/bookmarks";
 
-export async function handleSearch(query: string) {
+export async function handleSearch(query: string, bookmarks: Bookmark[]) {
   if (!query) {
     throw new Error("Search query cannot be empty.");
   }
@@ -12,7 +12,7 @@ export async function handleSearch(query: string) {
   try {
     const searchResults = await aiPoweredBookmarkSearch({
       query,
-      bookmarks: dummyBookmarks,
+      bookmarks,
     });
     return searchResults;
   } catch (error) {
@@ -21,10 +21,10 @@ export async function handleSearch(query: string) {
   }
 }
 
-export async function handleIndex() {
+export async function handleIndex(bookmarks: Bookmark[]) {
     try {
         const result = await indexBookmarks({
-            bookmarks: dummyBookmarks,
+            bookmarks,
         });
         return result;
     } catch(error) {

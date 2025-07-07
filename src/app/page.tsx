@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition } from "react";
+import React, { useState, useTransition, useRef } from "react";
 import {
   Bookmark,
   Search,
@@ -8,16 +8,17 @@ import {
   Loader2,
   Cpu,
   Globe,
-  FileText,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { handleSearch, handleIndex } from "./actions";
 import type { AiPoweredBookmarkSearchOutput } from "@/ai/flows/ai-powered-bookmark-search";
 import { useToast } from "@/hooks/use-toast";
+import { dummyBookmarks, type Bookmark as BookmarkType } from "@/lib/bookmarks";
 
 export default function Home() {
   const [isIndexing, startIndexingTransition] = useTransition();
@@ -26,13 +27,83 @@ export default function Home() {
     useState<AiPoweredBookmarkSearchOutput | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [bookmarks, setBookmarks] = useState<BookmarkType[]>(dummyBookmarks);
+  const [userBookmarksLoaded, setUserBookmarksLoaded] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { toast } = useToast();
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(content, "text/html");
+
+        const h1 = doc.querySelector('h1');
+        if (!h1 || !h1.textContent?.includes('Bookmarks')) {
+            throw new Error("Invalid bookmarks file format. Please export your bookmarks from Chrome as an HTML file.");
+        }
+
+        const links = Array.from(doc.querySelectorAll("a"));
+        const newBookmarks = links.map((link) => ({
+          title: link.innerText,
+          url: link.href,
+          description: link.innerText,
+        }));
+        
+        if (newBookmarks.length === 0) {
+            toast({
+                title: "No Bookmarks Found",
+                description: "The selected file does not contain any bookmarks.",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        setBookmarks(newBookmarks);
+        setUserBookmarksLoaded(true);
+        toast({
+          title: "Bookmarks Loaded",
+          description: `Successfully loaded ${newBookmarks.length} bookmarks. You can now index and search them.`,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to parse the bookmarks file.";
+        setError(message);
+        toast({
+          title: "Error Loading Bookmarks",
+          description: message,
+          variant: "destructive",
+        })
+      }
+    };
+    reader.onerror = () => {
+        const message = "Failed to read the file.";
+        setError(message);
+        toast({
+          title: "Error Reading File",
+          description: message,
+          variant: "destructive",
+        })
+    }
+    reader.readAsText(file);
+    if (event.target) {
+      event.target.value = "";
+    }
+  };
+
+  const onUploadClick = () => {
+    fileInputRef.current?.click();
+  };
 
   const onIndexClick = async () => {
     startIndexingTransition(async () => {
       setError(null);
-      const result = await handleIndex();
+      const result = await handleIndex(bookmarks);
       if (result.success) {
         toast({
           title: "Indexing Complete",
@@ -52,7 +123,7 @@ export default function Home() {
       setError(null);
       setSearchResults(null);
       try {
-        const results = await handleSearch(searchQuery);
+        const results = await handleSearch(searchQuery, bookmarks);
         setSearchResults(results);
       } catch (err) {
         setError(
@@ -120,11 +191,9 @@ export default function Home() {
               ))}
             </div>
           ) : (
-            searchResults.noResultsMessage && (
-              <div className="text-center py-10">
-                <p className="text-muted-foreground">{searchResults.noResultsMessage}</p>
+             <div className="text-center py-10">
+                <p className="text-muted-foreground">{searchResults.noResultsMessage || "No relevant bookmarks found."}</p>
               </div>
-            )
           )}
         </div>
       );
@@ -133,6 +202,9 @@ export default function Home() {
         <div className="text-center py-10">
           <Sparkles className="mx-auto h-12 w-12 text-primary/30" />
           <p className="mt-4 text-sm text-muted-foreground">
+            {userBookmarksLoaded ? `Loaded ${bookmarks.length} bookmarks.` : "Upload your Chrome bookmarks or use the sample data."}
+          </p>
+           <p className="mt-1 text-xs text-muted-foreground">
             Search your bookmarks with the power of AI.
           </p>
         </div>
@@ -156,6 +228,22 @@ export default function Home() {
                 </div>
 
                 <div className="flex items-center gap-2 mb-6">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      accept=".html"
+                      className="hidden"
+                    />
+                    <Button 
+                        onClick={onUploadClick} 
+                        disabled={isIndexing || isSearching}
+                        variant="outline"
+                        className="flex-1"
+                    >
+                        <Upload className="mr-2 h-4 w-4" />
+                        {userBookmarksLoaded ? "Load Other Bookmarks" : "Load Chrome Bookmarks"}
+                    </Button>
                     <Button 
                         onClick={onIndexClick} 
                         disabled={isIndexing || isSearching}
@@ -167,7 +255,7 @@ export default function Home() {
                     ) : (
                         <Cpu className="mr-2 h-4 w-4" />
                     )}
-                    Index Bookmarks
+                    Index {userBookmarksLoaded ? `(${bookmarks.length})` : ''} Bookmarks
                     </Button>
                 </div>
 
